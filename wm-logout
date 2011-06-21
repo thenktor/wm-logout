@@ -1,0 +1,193 @@
+#!/usr/bin/env python
+
+'''
+    wm-logout - present a dialog to perform power management actions or
+    logout from a window manager
+
+    Copyright (C) 2011 TerrorBite <https://launchpad.net/~terrorbite-industries>
+    Copyright (C) 2011 Thenktor from Salix OS <http://www.salixos.org>
+    
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+    Credit goes to Arthur Spitzer <http://arthapex.wordpress.com/> for the dbus code.
+        See http://arthapex.wordpress.com/2010/04/15/logging-out-from-openbox-the-upower-way/
+    Credit also goes to Philip Newborough <http://corenominal.org/> for the base script.
+        See http://crunchbang.org/archives/2008/04/01/openbox-logout-reboot-and-shutdown-script/
+'''
+
+import pygtk
+pygtk.require('2.0')
+import gtk
+import os
+import dbus
+
+# ConsoleKit - to reboot and shutdown (system bus)
+ConsoleKitService = 'org.freedesktop.ConsoleKit'
+ConsoleKitPath = '/org/freedesktop/ConsoleKit/Manager'
+ConsoleKitInterface = 'org.freedesktop.ConsoleKit.Manager'
+
+# UPower - to hibernate and suspend (system bus)
+UPowerService = 'org.freedesktop.UPower'
+UPowerPath = '/org/freedesktop/UPower'
+UPowerInterface = UPowerService
+
+class WMLogout:
+
+    def __init__(self):
+        # Initialize dbus system and session buses
+        self.system_bus = dbus.SystemBus()
+        self.session_bus = dbus.SessionBus()
+
+        # Get the dbus interface for ConsoleKit
+        self.consolekit = dbus.Interface(self.system_bus.get_object(ConsoleKitService,
+            ConsoleKitPath), ConsoleKitInterface)
+
+        # Get the dbus interface for UPower
+        self.upower = dbus.Interface(self.system_bus.get_object(UPowerService,
+            UPowerPath), UPowerInterface)
+
+        # Set up GTK window
+        self.gtk_init()
+
+    # Cancel/exit
+    def cancel(self, widget=None, event=None, data=None):
+        gtk.main_quit()
+        return False
+
+    # Logout
+    def logout(self, widget=None):
+        os.system('openbox --exit')
+
+    # Reboot
+    def reboot(self, widget=None):
+        self.consolekit.Restart()
+        self.logout()
+
+    # Shutdown
+    def shutdown(self, widget=None):
+        self.consolekit.Stop()
+        self.logout()
+
+    # Suspend
+    def suspend(self, widget=None):
+        self.upower.Suspend()
+        self.cancel()
+
+    # Hibernate
+    def hibernate(self, widget=None):
+        self.upower.Hibernate()
+        self.cancel()
+
+    def gtk_init(self):
+
+        icon_size = gtk.ICON_SIZE_BUTTON
+        btn_border_size = 6
+
+        # Create a new window
+        self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
+        self.window.set_title("Exit")
+        self.window.set_deletable(False)
+        self.window.set_resizable(False)
+        self.window.set_position(1)
+        self.window.connect("delete_event", self.cancel)
+        self.window.set_border_width(int(1.5*btn_border_size))
+
+        # Create a box to pack other widgets into
+        self.box_vert = gtk.VBox(False, 0)
+        self.window.add(self.box_vert)
+
+        # Create label
+        self.lbl_message = gtk.Label('Please select an action:')
+        self.box_vert.pack_start(self.lbl_message, True, True, 0)
+        self.lbl_message.show()
+
+        # Create a box for the top row of buttons
+        self.box_top = gtk.HBox(False, 0)
+        self.box_vert.pack_start(self.box_top, True, True, 0)
+
+        # Create a box for the middle row of buttons
+        self.box_middle = gtk.HBox(False, 0)
+        self.box_vert.pack_start(self.box_middle, True, True, 0)
+        
+        # Create a box for the bottom row of buttons
+        self.box_bottom = gtk.HBox(False, 0)
+        self.box_vert.pack_start(self.box_bottom, True, True, 0)
+
+        # Create shutdown button
+        self.btn_shutdown = gtk.Button('_Shutdown', None, True)         # Instantiate button
+        self.btn_shutdown.set_border_width(btn_border_size)             # Set border width to sane amount
+        image = gtk.image_new_from_icon_name('gnome-shutdown', icon_size)# Retrieve relevant icon at a nice size
+        self.btn_shutdown.set_property('image', image)                  # Set icon
+        self.btn_shutdown.set_sensitive(self.consolekit.CanStop())      # "Grey out" this button if we don't have this ability
+        self.btn_shutdown.connect("clicked", self.shutdown)             # Connect event handler
+        self.box_top.pack_start(self.btn_shutdown, True, True, 0)       # Insert into the correct layout box
+        self.btn_shutdown.show()                                        # Show button
+        # Now repeat for remaining buttons
+        
+        # Create logout button
+        self.btn_logout = gtk.Button('_Log out', None, True)
+        self.btn_logout.set_border_width(btn_border_size)
+        image = gtk.image_new_from_icon_name('gnome-logout', icon_size)
+        self.btn_logout.set_property('image', image)
+        self.btn_logout.connect("clicked", self.logout)
+        self.box_middle.pack_start(self.btn_logout, True, True, 0)
+        self.btn_logout.show()
+        
+        # Create reboot button
+        self.btn_reboot = gtk.Button('_Reboot', None, True)
+        self.btn_reboot.set_border_width(btn_border_size)
+        image = gtk.image_new_from_icon_name('reload', icon_size)
+        self.btn_reboot.set_property('image', image)
+        self.btn_reboot.set_sensitive(self.consolekit.CanRestart())
+        self.btn_reboot.connect("clicked", self.reboot)
+        self.box_middle.pack_start(self.btn_reboot, True, True, 0)
+        self.btn_reboot.show()
+
+        # Create suspend button
+        self.btn_suspend = gtk.Button('S_uspend', None, True)
+        self.btn_suspend.set_border_width(btn_border_size)
+        image = gtk.image_new_from_icon_name('gnome-session-suspend', icon_size)
+        self.btn_suspend.set_property('image', image)
+        self.btn_suspend.set_sensitive(self.upower.SuspendAllowed())
+        self.btn_suspend.connect("clicked", self.suspend)
+        self.box_middle.pack_start(self.btn_suspend, True, True, 0)
+        self.btn_suspend.show()
+
+        # Create hibernate button
+        self.btn_hibernate = gtk.Button('_Hibernate', None, True)
+        self.btn_hibernate.set_border_width(btn_border_size)
+        image = gtk.image_new_from_icon_name('gnome-session-hibernate', icon_size)
+        self.btn_hibernate.set_property('image', image)
+        self.btn_hibernate.set_sensitive(self.upower.HibernateAllowed())
+        self.btn_hibernate.connect("clicked", self.hibernate)
+        self.box_middle.pack_start(self.btn_hibernate, True, True, 0)
+        self.btn_hibernate.show()
+
+        # Create cancel button
+        self.btn_cancel = gtk.Button(stock='gtk-cancel')
+        self.btn_cancel.set_border_width(btn_border_size)
+        self.btn_cancel.connect("clicked", self.cancel, 'Cancelled')
+        self.box_vert.pack_start(self.btn_cancel, True, True, 0)
+        self.btn_cancel.show()
+
+        self.box_top.show()
+        self.box_middle.show()
+        self.box_bottom.show()
+        self.box_vert.show()
+        self.window.set_focus(self.btn_logout)
+        self.window.show()
+
+if __name__ == "__main__":
+    wmlogout = WMLogout()
+    gtk.main()
