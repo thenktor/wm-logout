@@ -3,6 +3,8 @@
 '''
     wm-logout - present a dialog to perform power management actions or
     logout from a window manager
+    
+    it requires: dbus, ConsoleKit, upower
 
     Copyright (C) 2011 TerrorBite <https://launchpad.net/~terrorbite-industries>
     Copyright (C) 2011 Thenktor from Salix OS <http://www.salixos.org>
